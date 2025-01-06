@@ -1,0 +1,215 @@
+---
+title: "STAT512 Final Project"
+output: html_document
+date: "2024-11-15"
+---
+
+## FUNCTIONS
+```{r}
+# Define the function to plot signifance
+plot_p_values <- function(model, significance_level = 0.05) {
+  
+  # Get the summary of the model
+  model_summary <- summary(model)
+  
+  # Extract the coefficients, p-values, and names of variables
+  coefficients <- model_summary$coefficients
+  p_values <- coefficients[, 4]  # p-values are in the 4th column
+  coeff_sign <- ifelse(coefficients[, 1] > 0, "positive", "negative")  # Sign of coefficients
+  
+  # Apply the negative log10 transformation to the p-values
+  log_p_values <- -log10(p_values)
+  
+  # Compute the significance cutoff for the specified p-value level
+  significance_cutoff <- -log10(significance_level)
+  
+  # Create a data frame with variables, transformed p-values, and sign of the coefficients
+  plot_data <- data.frame(
+    variable = rownames(coefficients),
+    log_p_value = log_p_values,
+    sign = coeff_sign
+  )
+  
+  # Remove the intercept (as it's not relevant for visualization)
+  plot_data <- plot_data[plot_data$variable != "(Intercept)", ]
+  
+  # Plot the transformed p-values with color based on the sign of the coefficients
+  ggplot(plot_data, aes(x = variable, y = log_p_value, fill = sign)) +
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = c("positive" = "blue", "negative" = "red")) +
+    labs(
+      title = paste("Negative log10 of P-value significance of each variable (p <", significance_level, ")"),
+      x = "Variable",
+      y = "-log10(P-value)",
+      fill = "Coefficient Sign"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # Rotate x-axis labels
+    geom_hline(yintercept = significance_cutoff, linetype = "dashed", color = "black") +  # Add significance cutoff line
+    annotate("text", x = length(plot_data$variable) - 1, y = significance_cutoff + .5, label = paste(significance_level, "Significance Cutoff"), color = "black", size = 2)
+}
+```
+
+## Load NHANES data
+```{r}
+# URX14D - 2,5-dichlorophenol (ug/L) result
+# URXOPP - O-Phenyl phenol (ug/L) result
+# URXDCB - 2,4-dichlorophenol (ug/L) result
+# URX1TB - 2,4,5-trichlorophenol (ug/L) result
+# URX3TB - 2,4,6-trichlorophenol (ug/L) result
+# URXUCR - Urinary creatinine (mg/dL)
+
+# path = "C:/Users/kmccr/Desktop/Google Drive/STAT512 Projects/Final Project/"
+path = "G:/Other computers/My Laptop/Google Drive/STAT512 Projects/Final Project/"
+data = read.table(paste0(path,"Final Data 112724.txt"), sep = "\t", header = TRUE)
+
+# convert to factors
+data$RIAGENDR = as.factor(data$RIAGENDR)
+data$RIDRETH1 = as.factor(data$RIDRETH1)
+
+# look at distribution of response variables
+hist(data$DXXOFBMD)
+hist(data$DXXOSBMD)
+
+# create response variable which is average of femur and spine BMD
+# data$AverageBMD = (data$DXXOFBMD + data$DXXOSBMD)/2
+
+# remove variables
+data$URD14DLC = NULL
+data$URDOPPLC = NULL
+data$URD1TBLC = NULL
+data$URD3TBLC = NULL
+data$URDDCBLC = NULL
+data$DXXOFBMD = NULL
+data$DXXOSBMD = NULL
+data$SEQN = NULL
+data$SDDSRVYR = NULL
+```
+## PREDICTOR ANALYSIS AND TRANSFORMATION
+```{r}
+# VISUALIZE
+library(ggplot2)
+library(rlang)
+library(pheatmap)
+
+for (col in colnames(data)[-which(colnames(data) == "AverageBMD")]) {
+  plot = ggplot(data, aes(x = !!sym(col), y = AverageBMD)) + geom_point() + geom_smooth(method = "lm")
+  print(plot)  
+}
+```
+
+```{r}
+# LOG TRANSFORM VARIABLES
+data$logURX14D = log(data$URX14D)
+data$logURXOPP = log(data$URXOPP)
+data$logURX1TB = log(data$URX1TB)
+data$logURX3TB = log(data$URX3TB)
+data$logURXDCB = log(data$URXDCB)
+
+# REMOVE LOG TRANSFORMED VARIABLES
+data$URX14D = NULL
+data$URXOPP = NULL
+data$URX1TB = NULL
+data$URX3TB = NULL
+data$URXDCB = NULL
+
+for (col in colnames(data)[-which(colnames(data) == "AverageBMD")]) {
+  plot = ggplot(data, aes(x = !!sym(col), y = AverageBMD)) + geom_point() + geom_smooth(method = "lm")
+  print(plot)  
+}
+```
+
+# Look at correlation of variables
+```{r}
+library(pheatmap)
+
+cor_matrix = cor(data[, !sapply(data, is.factor)])
+pheatmap(cor_matrix, 
+         display_numbers = TRUE,  # Show correlation values in cells
+         cluster_rows = TRUE,     # Cluster rows
+         cluster_cols = TRUE,     # Cluster columns
+         color = colorRampPalette(c("blue", "white", "red"))(50)  # Color scale
+)
+```
+# Remove correlated logURX14D
+```{r}
+data$logURX14D = NULL
+```
+
+
+# FULL MODEL
+```{r}
+# Fit linear model using interaction terms features
+full <- lm(AverageBMD ~ .^2, data = data)
+summary(full)
+cat('\nNumber of terms = ',length(coef(full))-1)
+```
+
+## VARIABLE SELECTION VIA STEPWISE
+```{r}
+# STEPWISE VARIABLE SELECTION
+null_model = lm(AverageBMD~1, data=data)
+stepwise = step(null_model, scope = list(lower = null_model, upper = full), direction = "both", k = 2, trace = FALSE,
+                     test = "F", steps = 1000, add = 0.05 , drop = 0.1)
+summary(stepwise)
+cat('\nNumber of terms = ',length(coef(stepwise))-1)
+```
+
+```{r}
+plot_p_values(stepwise)
+```
+
+```{r}
+plot(stepwise)
+```
+
+## MODEL ANALYSIS AND OUTLIER REMOVAL
+```{r}
+# Remove observation 32
+data = data[-32, ]
+
+# Repeat analysis
+null_model = lm(AverageBMD~1, data=data)
+stepwise2 = step(null_model, scope = list(lower = null_model, upper = full), direction = "both", k = 2, trace = TRUE,
+                     test = "F", steps = 1000, add = 0.05 , drop = 0.1)
+
+summary(stepwise2)
+plot(stepwise2)
+confint(stepwise2)
+AIC(stepwise2)
+```
+```{r}
+plot_p_values(stepwise2)
+```
+
+## LASSO VARIABLE SELECTION
+```{r}
+library(lars)
+data2 = data
+data2$AverageBMD = NULL
+
+y = (data$AverageBMD)
+
+##. Including Factor Variables
+x = data2 #[,c(1,2,3,4,5,6,7,15,16,17,18,19)] ## Selecting Independent Variables (demographics, log_pesticides) 
+
+X = model.matrix(~., data = x)[, -1] ## Converting Variables to a Matrix
+
+model.lasso_f <- lars(X, y, type="lasso")
+
+lambda.lasso_f <- c(model.lasso_f$lambda,0)
+beta_f <- coef(model.lasso_f)
+colors <- rainbow(8)
+
+matplot(lambda.lasso_f, beta_f, xlim=c(2,-1), type="o", pch=20,
+xlab = expression(lambda),
+ylab = expression(hat(beta_f)), col=colors)
+
+text(rep(-0, 9), beta_f[9,], colnames(X), pos=4, col=colors)
+abline(v=lambda.lasso_f[4], lty=2)
+abline(h=0, lty=2)
+```
+
+```{r}
+model.lasso_f
+```
