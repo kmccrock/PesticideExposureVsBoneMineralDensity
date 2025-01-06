@@ -1,6 +1,8 @@
 # PesticideExposureVsBoneMineralDensity
 Final project for STAT512 Applied Regression Analysis
 
+99/100
+
 This exploration makes use of the NHANES (National Health and Nutritional Examination Survey) to
 study the association between exposure to a set of household pesticide chemicals and Bone Mineral
 Density (BMD). The research question was therefore “Is there a significant association between
