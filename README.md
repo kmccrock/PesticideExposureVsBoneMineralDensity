@@ -1,2 +1,2 @@
 # PesticideExposureVsBoneMineralDensity
-Final project for STAT512 Linear Regression Analysis
+Final project for STAT512 Applied Regression Analysis
